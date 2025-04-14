@@ -3,39 +3,190 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wildfire Visualization - Real-Time FIRMS Data</title>
+  <title>Wildfire Visualization Over Time</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- Chart.js CSS (optional, Chart.js does not need a CSS file) -->
   <style>
-    body { margin: 0; padding: 0; }
-    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #121212; /* dark background */
+      color: orange; /* default text color orange */
+    }
+    /* Page Header */
+    #page-header {
+      background-color: black;
+      color: orange;
+      padding: 10px;
+      text-align: center;
+      font-size: 24px;
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 1100;
+    }
+    /* Chart container styles */
+    #chart-container {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      background-color: black;
+      padding: 10px;
+      margin-top: 60px; /* space to accommodate header */
+    }
+    .chart-box {
+      flex: 1;
+      margin: 5px;
+    }
+    canvas {
+      background-color: #1e1e1e; /* dark canvas background */
+      border: 1px solid orange;
+    }
+    /* Date range picker styles */
+    #date-range {
+      text-align: center;
+      margin: 10px;
+      margin-top: 70px; /* additional margin to avoid overlap with header */
+    }
+    select {
+      font-size: 16px;
+      padding: 5px;
+      background-color: #1e1e1e;
+      color: orange;
+      border: 1px solid orange;
+    }
+    /* Map container styles */
+    #map {
+      position: absolute;
+      top: 375px; /* space for header, date range, and charts */
+      bottom: 0;
+      width: 100%;
+    }
+    /* Map title overlay inside the map container */
+    #map-title {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: black;
+      color: orange;
+      padding: 5px 10px;
+      z-index: 1000;
+      font-weight: bold;
+      border-radius: 3px;
+    }
+    /* Map label (Near Real Time Information) remains at top right of map */
+    #map-label {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: black;
+      color: orange;
+      padding: 5px 10px;
+      z-index: 1000;
+      font-weight: bold;
+      border-radius: 3px;
+    }
+    /* Map legend overlay */
+    #map-legend {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background-color: black;
+      color: orange;
+      padding: 10px;
+      z-index: 1000;
+      font-weight: bold;
+      border-radius: 3px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    #map-legend div.legend-item {
+      margin-bottom: 4px;
+    }
+    #map-legend span.legend-color {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      border: 1px solid orange;
+    }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-
+  <!-- Page Header -->
+  <div id="page-header">Temp Page Title</div>
+  
+  <!-- Date Range Picker and Charts Container -->
+  <div id="date-range">
+    <label for="rangeSelect">Select Time Range: </label>
+    <select id="rangeSelect">
+      <option value="week">Past Week</option>
+      <option value="month">Past Month</option>
+      <option value="year">Past Year</option>
+    </select>
+  </div>
+  <div id="chart-container">
+    <div class="chart-box">
+      <canvas id="chartTotalFires"></canvas>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartAvgBrightness"></canvas>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartAvgConfidence"></canvas>
+    </div>
+  </div>
+  
+  <!-- Map Container -->
+  <div id="map">
+    <!-- Map Title Overlay placed inside map container -->
+    <div id="map-title">Wildfire Visualization Over Time</div>
+  </div>
+  <!-- Map Label (Near Real Time Information) -->
+  <div id="map-label">Near Real Time Information</div>
+  <!-- Map Legend Overlay -->
+  <div id="map-legend">
+    <div class="legend-item"><span class="legend-color" style="background-color: red;"></span>High Confidence (≥ 80)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color: orange;"></span>Medium Confidence (60–79)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color: yellow;"></span>Low Confidence (40–59)</div>
+    <div class="legend-item"><span class="legend-color" style="background-color: green;"></span>Very Low Confidence (< 40)</div>
+  </div>
+  
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <!-- PapaParse JS for CSV parsing -->
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- PapaParse JS for CSV parsing (for realtime FIRMS data) -->
   <script src="https://unpkg.com/papaparse@5.3.2/papaparse.min.js"></script>
+  
   <script>
-    // Initialize the map and set view over the central US
+    // Initialize the Leaflet map (centered on the central US)
     const map = L.map('map').setView([39.8283, -98.5795], 5);
-
-    // Add a dark tile layer from CartoDB (Dark Matter)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
     }).addTo(map);
-
-    // Function to fetch and plot wildfire data from NASA's FIRMS API
+    
+    // Function to map confidence level to a marker color
+    // Assuming confidence is a number between 0 and 100
+    function getMarkerColor(confidence) {
+      if (confidence >= 80) return 'red';
+      else if (confidence >= 60) return 'orange';
+      else if (confidence >= 40) return 'yellow';
+      else return 'green';
+    }
+    
+    // Function to fetch realtime wildfire CSV data and add markers to the map
     async function fetchWildfireData() {
       try {
-        // Replace the URL below with the actual endpoint of NASA's FIRMS API that returns CSV data
+        // Replace with your FIRMS CSV endpoint URL
         const response = await fetch('https://firms.modaps.eosdis.nasa.gov/api/area/csv/4eb4f0ffb16f051d91dd3c59f1bed58f/VIIRS_SNPP_NRT/world/1');
         const csvText = await response.text();
         console.log('Raw CSV response:', csvText);
-
+    
         // Parse CSV using PapaParse
         Papa.parse(csvText, {
           header: true,
@@ -44,19 +195,20 @@
             const data = results.data;
             console.log('Parsed data:', data);
             data.forEach(fire => {
-              // Ensure latitude and longitude exist and are numbers
               const latitude = parseFloat(fire.latitude);
               const longitude = parseFloat(fire.longitude);
+              // Validate coordinates
               if (!isNaN(latitude) && !isNaN(longitude)) {
-                // Create a circle marker with orange color
+                // Determine marker color based on confidence (assumed numeric)
+                let conf = parseFloat(fire.confidence);
+                let color = getMarkerColor(isNaN(conf) ? 0 : conf);
+                // Create a circle marker with dynamic color and a radius of 4
                 const marker = L.circleMarker([latitude, longitude], {
                   radius: 4,
-                  color: 'orange',
-                  fillColor: 'orange',
+                  color: color,
+                  fillColor: color,
                   fillOpacity: 0.8
                 }).addTo(map);
-                
-                // Bind a popup with additional fire information
                 marker.bindPopup(
                   `Brightness: ${fire.brightness}<br>Confidence: ${fire.confidence}<br>Acquired: ${fire.acq_date} ${fire.acq_time}`
                 );
@@ -71,9 +223,159 @@
         console.error('Error fetching wildfire data:', error);
       }
     }
-
-    // Fetch the wildfire data on page load
+    
+    // Call the realtime data function on page load
     fetchWildfireData();
+    
+    // ====== Historical Data Charting ======
+    // Global chart variables
+    let chartTotalFires, chartAvgBrightness, chartAvgConfidence;
+    
+    // Function to initialize charts (if not already created)
+    function initCharts() {
+      const ctxTotal = document.getElementById('chartTotalFires').getContext('2d');
+      const ctxBrightness = document.getElementById('chartAvgBrightness').getContext('2d');
+      const ctxConfidence = document.getElementById('chartAvgConfidence').getContext('2d');
+    
+      chartTotalFires = new Chart(ctxTotal, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Total Fires',
+            data: [],
+            borderColor: 'orange',
+            backgroundColor: 'transparent',
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          title: { 
+            display: true, 
+            text: 'Total Fires',
+            fontColor: 'orange'
+          },
+          legend: { labels: { fontColor: 'orange' }},
+          scales: {
+            xAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }],
+            yAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }]
+          }
+        }
+      });
+    
+      chartAvgBrightness = new Chart(ctxBrightness, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Avg Brightness',
+            data: [],
+            borderColor: 'orange',
+            backgroundColor: 'transparent',
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          title: { 
+            display: true, 
+            text: 'Average Brightness',
+            fontColor: 'orange'
+          },
+          legend: { labels: { fontColor: 'orange' }},
+          scales: {
+            xAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }],
+            yAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }]
+          }
+        }
+      });
+    
+      chartAvgConfidence = new Chart(ctxConfidence, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Avg Confidence',
+            data: [],
+            borderColor: 'orange',
+            backgroundColor: 'transparent',
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          title: { 
+            display: true, 
+            text: 'Average Confidence',
+            fontColor: 'orange'
+          },
+          legend: { labels: { fontColor: 'orange' }},
+          scales: {
+            xAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }],
+            yAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }]
+          }
+        }
+      });
+    }
+    
+    // Function to update charts with aggregated historical data
+    async function updateCharts(range) {
+      // Calculate start_time and end_time based on the selected range
+      const now = Math.floor(Date.now() / 1000);
+      let start_time;
+      if (range === 'week') {
+        start_time = now - (7 * 86400);
+      } else if (range === 'month') {
+        start_time = now - (30 * 86400);
+      } else if (range === 'year') {
+        start_time = now - (365 * 86400);
+      } else {
+        start_time = now - 86400; // default to 24 hours
+      }
+    
+      // Fetch aggregated historical data from your API endpoint (root endpoint)
+      const apiUrl = `https://t54qw3hzla.execute-api.us-east-2.amazonaws.com/prod?start_time=${start_time}&end_time=${now}&granularity=day`;
+      try {
+        const response = await fetch(apiUrl);
+        const result = await response.json();
+        // The API response's body is a JSON string, so parse it if necessary
+        const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+        console.log('Aggregated historical data:', data);
+        const series = data.aggregated_series;
+        const labels = series.map(item => item.time_period);
+        const totalFiresData = series.map(item => item.total_fires);
+        const avgBrightnessData = series.map(item => item.average_brightness);
+        const avgConfidenceData = series.map(item => item.average_confidence);
+    
+        // Update charts
+        chartTotalFires.data.labels = labels;
+        chartTotalFires.data.datasets[0].data = totalFiresData;
+        chartTotalFires.update();
+    
+        chartAvgBrightness.data.labels = labels;
+        chartAvgBrightness.data.datasets[0].data = avgBrightnessData;
+        chartAvgBrightness.update();
+    
+        chartAvgConfidence.data.labels = labels;
+        chartAvgConfidence.data.datasets[0].data = avgConfidenceData;
+        chartAvgConfidence.update();
+      } catch (error) {
+        console.error('Error fetching aggregated data:', error);
+      }
+    }
+    
+    // Initialize charts on page load
+    initCharts();
+    
+    // Set up event listener for the date range picker
+    document.getElementById('rangeSelect').addEventListener('change', function() {
+      const selectedRange = this.value;
+      updateCharts(selectedRange);
+    });
+    
+    // Optionally, load default historical data (e.g., past week) on page load
+    updateCharts('week');
   </script>
 </body>
 </html>
