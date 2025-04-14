@@ -6,8 +6,11 @@
   <title>Wildfire Visualization Over Time</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <!-- Chart.js CSS (optional, Chart.js does not need a CSS file) -->
   <style>
+    /* Ensure full height */
+    html, body {
+      height: 100%;
+    }
     body {
       margin: 0;
       padding: 0;
@@ -27,6 +30,19 @@
       width: 100%;
       z-index: 1100;
     }
+    /* Date range picker styles */
+    #date-range {
+      text-align: center;
+      margin: 10px;
+      margin-top: 75px; /* additional margin to avoid overlap with header */
+    }
+    select {
+      font-size: 16px;
+      padding: 5px;
+      background-color: #1e1e1e;
+      color: orange;
+      border: 1px solid orange;
+    }
     /* Chart container styles */
     #chart-container {
       display: flex;
@@ -34,7 +50,7 @@
       align-items: center;
       background-color: black;
       padding: 10px;
-      margin-top: 60px; /* space to accommodate header */
+      margin-top: 10px;
     }
     .chart-box {
       flex: 1;
@@ -44,28 +60,29 @@
       background-color: #1e1e1e; /* dark canvas background */
       border: 1px solid orange;
     }
-    /* Date range picker styles */
-    #date-range {
-      text-align: center;
-      margin: 10px;
-      margin-top: 70px; /* additional margin to avoid overlap with header */
-    }
-    select {
-      font-size: 16px;
-      padding: 5px;
-      background-color: #1e1e1e;
-      color: orange;
-      border: 1px solid orange;
-    }
-    /* Map container styles */
-    #map {
+    /* Maps container styles */
+    #maps-container {
+      display: flex;
+      gap: 10px; /* small buffer between maps */
       position: absolute;
-      top: 375px; /* space for header, date range, and charts */
+      top: 450px; /* space for header, date range, and charts */
       bottom: 0;
       width: 100%;
     }
-    /* Map title overlay inside the map container */
-    #map-title {
+    /* Realtime Map container */
+    #map {
+      flex: 1;
+      position: relative;
+      min-height: 300px;
+    }
+    /* Historical Map container */
+    #historical-map {
+      flex: 1;
+      position: relative;
+      min-height: 300px;
+    }
+    /* Map title overlay inside each map container */
+    .map-title {
       position: absolute;
       top: 10px;
       left: 50%;
@@ -77,7 +94,7 @@
       font-weight: bold;
       border-radius: 3px;
     }
-    /* Map label (Near Real Time Information) remains at top right of map */
+    /* Map label (Near Real Time Information) remains at top right of realtime map */
     #map-label {
       position: absolute;
       top: 10px;
@@ -89,7 +106,7 @@
       font-weight: bold;
       border-radius: 3px;
     }
-    /* Map legend overlay */
+    /* Map legend overlay on realtime map */
     #map-legend {
       position: absolute;
       bottom: 10px;
@@ -117,9 +134,9 @@
 </head>
 <body>
   <!-- Page Header -->
-  <div id="page-header">Temp Page Title</div>
+  <div id="page-header">Wildfire Visualization Over Time</div>
   
-  <!-- Date Range Picker and Charts Container -->
+  <!-- Date Range Picker -->
   <div id="date-range">
     <label for="rangeSelect">Select Time Range: </label>
     <select id="rangeSelect">
@@ -128,6 +145,8 @@
       <option value="year">Past Year</option>
     </select>
   </div>
+  
+  <!-- Chart Container -->
   <div id="chart-container">
     <div class="chart-box">
       <canvas id="chartTotalFires"></canvas>
@@ -140,14 +159,21 @@
     </div>
   </div>
   
-  <!-- Map Container -->
-  <div id="map">
-    <!-- Map Title Overlay placed inside map container -->
-    <div id="map-title">Wildfire Visualization Over Time</div>
+  <!-- Maps Container: Two maps side by side -->
+  <div id="maps-container">
+    <!-- Realtime Map Container -->
+    <div id="map">
+      <div class="map-title">Realtime Data</div>
+    </div>
+    <!-- Historical Map Container -->
+    <div id="historical-map">
+      <div class="map-title">Historical Data</div>
+    </div>
   </div>
-  <!-- Map Label (Near Real Time Information) -->
+  
+  <!-- Map Label (applies to the realtime map) -->
   <div id="map-label">Near Real Time Information</div>
-  <!-- Map Legend Overlay -->
+  <!-- Map Legend Overlay (applies to the realtime map) -->
   <div id="map-legend">
     <div class="legend-item"><span class="legend-color" style="background-color: red;"></span>High Confidence (≥ 80)</div>
     <div class="legend-item"><span class="legend-color" style="background-color: orange;"></span>Medium Confidence (60–79)</div>
@@ -163,15 +189,21 @@
   <script src="https://unpkg.com/papaparse@5.3.2/papaparse.min.js"></script>
   
   <script>
-    // Initialize the Leaflet map (centered on the central US)
-    const map = L.map('map').setView([39.8283, -98.5795], 5);
+    // Initialize the Realtime Leaflet map (centered on the central US)
+    const map = L.map('map').setView([39.8283, -98.5795], 4);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
     }).addTo(map);
     
+    // Initialize the Historical Leaflet map (centered on the central US)
+    const historicalMap = L.map('historical-map').setView([39.8283, -98.5795], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(historicalMap);
+    
     // Function to map confidence level to a marker color
-    // Assuming confidence is a number between 0 and 100
     function getMarkerColor(confidence) {
       if (confidence >= 80) return 'red';
       else if (confidence >= 60) return 'orange';
@@ -179,7 +211,7 @@
       else return 'green';
     }
     
-    // Function to fetch realtime wildfire CSV data and add markers to the map
+    // Function to fetch realtime wildfire CSV data and add markers to the realtime map
     async function fetchWildfireData() {
       try {
         // Replace with your FIRMS CSV endpoint URL
@@ -187,22 +219,18 @@
         const csvText = await response.text();
         console.log('Raw CSV response:', csvText);
     
-        // Parse CSV using PapaParse
         Papa.parse(csvText, {
           header: true,
           dynamicTyping: true,
           complete: function(results) {
             const data = results.data;
-            console.log('Parsed data:', data);
+            console.log('Parsed realtime data:', data);
             data.forEach(fire => {
               const latitude = parseFloat(fire.latitude);
               const longitude = parseFloat(fire.longitude);
-              // Validate coordinates
               if (!isNaN(latitude) && !isNaN(longitude)) {
-                // Determine marker color based on confidence (assumed numeric)
                 let conf = parseFloat(fire.confidence);
                 let color = getMarkerColor(isNaN(conf) ? 0 : conf);
-                // Create a circle marker with dynamic color and a radius of 4
                 const marker = L.circleMarker([latitude, longitude], {
                   radius: 4,
                   color: color,
@@ -216,22 +244,20 @@
             });
           },
           error: function(err) {
-            console.error('Error parsing CSV:', err);
+            console.error('Error parsing realtime CSV:', err);
           }
         });
       } catch (error) {
-        console.error('Error fetching wildfire data:', error);
+        console.error('Error fetching realtime wildfire data:', error);
       }
     }
     
     // Call the realtime data function on page load
     fetchWildfireData();
     
-    // ====== Historical Data Charting ======
-    // Global chart variables
+    // ====== Aggregated Charts (from aggregated API endpoint) ======
     let chartTotalFires, chartAvgBrightness, chartAvgConfidence;
     
-    // Function to initialize charts (if not already created)
     function initCharts() {
       const ctxTotal = document.getElementById('chartTotalFires').getContext('2d');
       const ctxBrightness = document.getElementById('chartAvgBrightness').getContext('2d');
@@ -251,12 +277,8 @@
         },
         options: {
           responsive: true,
-          title: { 
-            display: true, 
-            text: 'Total Fires',
-            fontColor: 'orange'
-          },
-          legend: { labels: { fontColor: 'orange' }},
+          title: { display: true, text: 'Total Fires', fontColor: 'orange' },
+          legend: { labels: { fontColor: 'orange' } },
           scales: {
             xAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }],
             yAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }]
@@ -278,12 +300,8 @@
         },
         options: {
           responsive: true,
-          title: { 
-            display: true, 
-            text: 'Average Brightness',
-            fontColor: 'orange'
-          },
-          legend: { labels: { fontColor: 'orange' }},
+          title: { display: true, text: 'Average Brightness', fontColor: 'orange' },
+          legend: { labels: { fontColor: 'orange' } },
           scales: {
             xAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }],
             yAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }]
@@ -305,12 +323,8 @@
         },
         options: {
           responsive: true,
-          title: { 
-            display: true, 
-            text: 'Average Confidence',
-            fontColor: 'orange'
-          },
-          legend: { labels: { fontColor: 'orange' }},
+          title: { display: true, text: 'Average Confidence', fontColor: 'orange' },
+          legend: { labels: { fontColor: 'orange' } },
           scales: {
             xAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }],
             yAxes: [{ ticks: { fontColor: 'orange' }, gridLines: { color: 'gray' } }]
@@ -319,9 +333,8 @@
       });
     }
     
-    // Function to update charts with aggregated historical data
+    // Function to update charts with aggregated historical data from your API endpoint (aggregated data)
     async function updateCharts(range) {
-      // Calculate start_time and end_time based on the selected range
       const now = Math.floor(Date.now() / 1000);
       let start_time;
       if (range === 'week') {
@@ -334,12 +347,10 @@
         start_time = now - 86400; // default to 24 hours
       }
     
-      // Fetch aggregated historical data from your API endpoint (root endpoint)
       const apiUrl = `https://t54qw3hzla.execute-api.us-east-2.amazonaws.com/prod?start_time=${start_time}&end_time=${now}&granularity=day`;
       try {
         const response = await fetch(apiUrl);
         const result = await response.json();
-        // The API response's body is a JSON string, so parse it if necessary
         const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
         console.log('Aggregated historical data:', data);
         const series = data.aggregated_series;
@@ -348,7 +359,6 @@
         const avgBrightnessData = series.map(item => item.average_brightness);
         const avgConfidenceData = series.map(item => item.average_confidence);
     
-        // Update charts
         chartTotalFires.data.labels = labels;
         chartTotalFires.data.datasets[0].data = totalFiresData;
         chartTotalFires.update();
@@ -360,8 +370,45 @@
         chartAvgConfidence.data.labels = labels;
         chartAvgConfidence.data.datasets[0].data = avgConfidenceData;
         chartAvgConfidence.update();
+    
+        // Also update the historical map with raw data
+        updateHistoricalMapRaw(start_time, now);
       } catch (error) {
         console.error('Error fetching aggregated data:', error);
+      }
+    }
+    
+    // Function to update the historical map using raw data from DynamoDB
+    async function updateHistoricalMapRaw(start_time, now) {
+      // Assume your raw data API endpoint is at /prod/raw and returns an array of raw records
+      const rawApiUrl = `https://t54qw3hzla.execute-api.us-east-2.amazonaws.com/prod/raw?start_time=${start_time}&end_time=${now}`;
+      try {
+        const response = await fetch(rawApiUrl);
+        const result = await response.json();
+        // Parse the result.body if necessary
+        const rawData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+        console.log('Raw historical data:', rawData);
+    
+        // Clear any existing non-tile layers from the historical map
+        historicalMap.eachLayer(function(layer) {
+          if (!(layer instanceof L.TileLayer)) {
+            historicalMap.removeLayer(layer);
+          }
+        });
+    
+        // Plot each raw fire event
+        rawData.forEach(record => {
+          const lat = parseFloat(record.latitude);
+          const lng = parseFloat(record.longitude);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const marker = L.marker([lat, lng]).addTo(historicalMap);
+            marker.bindPopup(
+              `Brightness: ${record.brightness}<br>Confidence: ${record.confidence}<br>Acquired: ${record.acq_date} ${record.acq_time}`
+            );
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching raw historical data:', error);
       }
     }
     
@@ -374,7 +421,7 @@
       updateCharts(selectedRange);
     });
     
-    // Optionally, load default historical data (e.g., past week) on page load
+    // Load default historical data (e.g., past week) on page load
     updateCharts('week');
   </script>
 </body>
