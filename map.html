@@ -64,22 +64,21 @@
     #maps-container {
       display: flex;
       gap: 10px; /* small buffer between maps */
-      position: absolute;
-      top: 450px; /* space for header, date range, and charts */
-      bottom: 0;
+      margin-top: 20px; /* space above maps */
+      margin-bottom: 20px; /* space below maps before write-up */
       width: 100%;
     }
     /* Realtime Map container */
     #map {
       flex: 1;
       position: relative;
-      min-height: 300px;
+      height: 400px;
     }
     /* Historical Map container */
     #historical-map {
       flex: 1;
       position: relative;
-      min-height: 300px;
+      height: 400px;
     }
     /* Map title overlay inside each map container */
     .map-title {
@@ -136,6 +135,11 @@
   <!-- Page Header -->
   <div id="page-header">Wildfire Visualization Over Time</div>
   
+  <!-- Jump to Write-Up Link -->
+  <div style="text-align:center; margin:10px;">
+    <a href="#project-writeup" style="color: orange; background-color: black; padding: 5px 10px; border-radius: 3px; text-decoration: none;">Jump to Project Write-Up</a>
+  </div>
+  
   <!-- Date Range Picker -->
   <div id="date-range">
     <label for="rangeSelect">Select Time Range: </label>
@@ -180,6 +184,83 @@
     <div class="legend-item"><span class="legend-color" style="background-color: yellow;"></span>Low Confidence (40–59)</div>
     <div class="legend-item"><span class="legend-color" style="background-color: green;"></span>Very Low Confidence (< 40)</div>
   </div>
+  
+  <!-- Project Write-Up -->
+  <section id="project-writeup" style="padding:20px; background-color:#1e1e1e; color: orange;">
+    <h2>Project Write-Up</h2>
+    <h3>1. Overview</h3>
+    <p>This project is a comprehensive real-time and historical wildfire monitoring application. It leverages NASA’s FIRMS satellite data to display current wildfire hotspots on an interactive map and historical events plotted from raw data stored in DynamoDB.</p>
+ 
+    <h3>2. Tools &amp; Technologies</h3>
+    <ul>
+      <li><strong>Frontend:</strong> HTML, CSS, JavaScript, Leaflet for mapping, Chart.js for charts, PapaParse for CSV parsing.</li>
+      <li><strong>Backend:</strong> AWS Lambda (Python) for data ingestion and aggregation, API Gateway for endpoints, DynamoDB for storage, EventBridge Scheduler for periodic runs.</li>
+      <li><strong>Hosting:</strong> GitHub Pages (static site) and AWS services (Lambda, API Gateway, DynamoDB).</li>
+    </ul>
+ 
+    <h3>3. Data Sources</h3>
+    <ul>
+      <li><strong>NASA FIRMS API (Near Real-Time):</strong> Provides CSV endpoints for fire detections.</li>
+      <li><strong>DynamoDB:</strong> Stores raw fire event records and aggregated daily metrics.</li>
+    </ul>
+ 
+    <h3>4. Architecture &amp; Steps</h3>
+    <ol>
+      <li><strong>Phase 1 - Frontend Setup:</strong> Use Leaflet to render a dark basemap and fetch the FIRMS CSV in the browser via PapaParse. Plot real-time markers color-coded by confidence.</li>
+      <li><strong>Phase 2 - Backend Ingestion:</strong> Write a Python Lambda that downloads FIRMS CSV every 30 minutes, parses records into DynamoDB, converting floats to Decimal to satisfy DynamoDB requirements.</li>
+      <li><strong>Phase 3 - Aggregation Endpoint:</strong> Create a second Lambda+API Gateway endpoint that queries DynamoDB, aggregates by day/week/month, and returns JSON with <code>aggregated_series</code>.</li>
+      <li><strong>Phase 4 - Historical Map &amp; Charts:</strong> Frontend fetches aggregated data for Chart.js line charts and raw data for a second Leaflet map, plotting each historical event via a <code>/prod/raw</code> API endpoint.</li>
+    </ol>
+ 
+    <h3>5. Backend Code Example (Python Lambda)</h3>
+    <pre><code>import requests
+import csv
+import boto3
+from decimal import Decimal
+from io import StringIO
+
+dynamodb = boto3.resource('dynamodb', region_name='us-east-2')
+table = dynamodb.Table('WildfireData')
+
+url = 'https://firms.modaps.eosdis.nasa.gov/...csv'
+response = requests.get(url)
+csv_file = StringIO(response.text)
+reader = csv.DictReader(csv_file)
+for record in reader:
+    item = {
+        'RecordID': f"{record['acq_date']}_{record['acq_time']}",
+        'latitude': Decimal(record['latitude']),
+        'longitude': Decimal(record['longitude']),
+        'brightness': Decimal(record['brightness']),
+        'confidence': Decimal(record['confidence']),
+        'acq_date': record['acq_date'],
+        'acq_time': record['acq_time']
+    }
+    table.put_item(Item=item)
+</code></pre>
+ 
+    <h3>6. Frontend Code Example</h3>
+    <pre><code>// Fetch raw historical data and plot on Leaflet
+async function updateHistoricalMapRaw(start, end) {
+  const response = await fetch(
+    `/prod/raw?start_time=${start}&end_time=${end}`
+  );
+  const data = await response.json();
+  rawData.forEach(r => {
+    L.marker([+r.latitude, +r.longitude]).addTo(historicalMap)
+      .bindPopup(`Brightness: ${r.brightness} Confidence: ${r.confidence}`);
+  });
+}
+</code></pre>
+ 
+    <h3>7. Usage &amp; Deployment</h3>
+    <ul>
+      <li>Host <code>map.html</code> on GitHub Pages.</li>
+      <li>Deploy Lambdas and API Gateway in AWS (us-east-2).</li>
+      <li>Ensure CORS is enabled on the endpoints.</li>
+      <li>Monitor logs and DynamoDB to verify data flow.</li>
+    </ul>
+  </section>
   
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
